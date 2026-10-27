@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Memory images
+samples/
+results/
+*.raw
+*.mem
+*.vmem
+*.dmp
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Sensitive files
+.env
+.env.*
