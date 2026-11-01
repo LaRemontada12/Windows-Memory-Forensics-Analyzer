@@ -2,8 +2,8 @@
 import sqlite3
 import hashlib
 import subprocess
-import json
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -67,6 +67,7 @@ def health():
 # 5. CASE MANAGEMENT - DAY 2
 # ==========================================
 
+# Tao phien dieu tra
 @app.post("/cases", status_code=201)
 def create_case(case: CaseCreate):
 
@@ -93,6 +94,7 @@ def create_case(case: CaseCreate):
         conn.close()
 
 
+# Xem danh sach phien dieu tra
 @app.get("/cases")
 def get_cases():
 
@@ -114,6 +116,7 @@ def get_cases():
 # 6. MEMORY IMAGE MANAGEMENT - DAY 3
 # ==========================================
 
+# Dang ky anh RAM vao phien dieu tra
 @app.post("/cases/{case_id}/images", status_code=201)
 def register_image(case_id: int, image: MemoryImageCreate):
 
@@ -201,6 +204,7 @@ def register_image(case_id: int, image: MemoryImageCreate):
         conn.close()
 
 
+# Xem danh sach Memory Images cua mot Case
 @app.get("/cases/{case_id}/images")
 def get_memory_images(case_id: int):
 
@@ -235,7 +239,7 @@ def get_memory_images(case_id: int):
 
 
 # ==========================================
-# 7. VOLATILITY 3 ANALYSIS - DAY 4
+# 7. VOLATILITY 3 ANALYSIS - DAY 4 & DAY 5
 # ==========================================
 
 # Cap nhat lich su phan tich
@@ -263,7 +267,15 @@ def finish_analysis_run(run_id, status, error_message=None):
 
 # API phan tich RAM bang Volatility 3
 @app.post("/images/{image_id}/analyze")
-def analyze_image(image_id: int):
+def analyze_image(
+    image_id: int,
+    plugin: Literal[
+        "windows.info",
+        "windows.pslist",
+        "windows.pstree",
+        "windows.cmdline"
+    ] = "windows.info"
+):
 
     # Lay thong tin anh RAM tu SQLite
     conn = sqlite3.connect(DB_PATH)
@@ -326,7 +338,7 @@ def analyze_image(image_id: int):
             """,
             (
                 image_id,
-                "windows.info",
+                plugin,
                 "running"
             )
         )
@@ -342,7 +354,10 @@ def analyze_image(image_id: int):
     # ======================================
 
     try:
-        result = run_volatility(image_path)
+        result = run_volatility(
+            image_path,
+            plugin
+        )
 
     except subprocess.TimeoutExpired:
         finish_analysis_run(
@@ -381,7 +396,7 @@ def analyze_image(image_id: int):
     return {
         "run_id": run_id,
         "image_id": image_id,
-        "plugin": "windows.info",
+        "plugin": plugin,
         "status": "completed",
         "results": result
     }

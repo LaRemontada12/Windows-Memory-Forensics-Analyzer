@@ -6,7 +6,7 @@ A web-based Windows memory forensics and anomaly detection application powered b
 
 This project aims to develop a tool for analyzing Windows memory images, identifying suspicious activities, and supporting digital forensic investigations.
 
-The application integrates Volatility 3 with a FastAPI backend to automate memory analysis, manage investigation cases, and maintain analysis execution history.
+The application integrates Volatility 3 with a FastAPI backend to automate memory analysis, manage investigation cases, analyze Windows processes, and maintain analysis execution history.
 
 ## Tech Stack
 
@@ -34,27 +34,41 @@ The application integrates Volatility 3 with a FastAPI backend to automate memor
 
 ### Volatility 3 Integration
 - Automated memory analysis using Volatility 3
-- Integration of the `windows.info` plugin
-- JSON analysis results through REST API
+- Support for multiple Volatility 3 plugins
+- Plugin selection through REST API
+- JSON analysis results through FastAPI
 - Analysis execution history stored in SQLite
 - Analysis status tracking (`running`, `completed`, `failed`)
 - Analysis timeout and error handling
 
+### Windows Memory & Process Analysis
+- `windows.info` – Extract Windows kernel and operating system information
+- `windows.pslist` – Enumerate Windows processes
+- `windows.pstree` – Analyze parent-child process relationships
+- `windows.cmdline` – Extract process command-line arguments
+- Retrieve process information including PID, PPID, process names, and creation times
+
 ## Planned Features
 
-- Additional Volatility 3 plugins:
-  - `windows.pslist`
-  - `windows.pstree`
-  - `windows.cmdline`
+### Advanced Memory Analysis
+- Integration of additional Volatility 3 plugins:
   - `windows.malfind`
   - `windows.netscan`
-- Suspicious process and command-line detection
-- Process tree visualization
 - Memory injection indicators
-- Suspicious network connection analysis
-- Rule-based anomaly detection
+- Network connection analysis
 - Forensic evidence storage
+
+### Anomaly Detection
+- Suspicious process detection
+- Suspicious command-line detection
+- Abnormal parent-child process relationship detection
+- Rule-based anomaly detection
+- Investigation findings and severity classification
+
+### Web Interface & Reporting
 - Web dashboard
+- Process tree visualization
+- Analysis history visualization
 - Forensic report generation
 - Evaluation using Windows memory images
 
@@ -119,23 +133,47 @@ http://127.0.0.1:8000/docs
 | GET | `/cases` | Retrieve investigation cases |
 | POST | `/cases/{case_id}/images` | Register a memory image |
 | GET | `/cases/{case_id}/images` | Retrieve registered memory images |
-| POST | `/images/{image_id}/analyze` | Analyze a memory image using Volatility 3 |
+| POST | `/images/{image_id}/analyze` | Analyze a memory image using a selected Volatility 3 plugin |
+
+### Supported Analysis Plugins
+
+The analysis API currently supports:
+
+- `windows.info`
+- `windows.pslist`
+- `windows.pstree`
+- `windows.cmdline`
+
+The plugin can be selected using the optional `plugin` query parameter. By default, the API executes `windows.info`.
 
 ## Current Limitations
 
 - Memory image registration currently uses local file paths inside the `samples` directory.
-- Automated analysis currently supports only `windows.info`.
-- Analysis results are returned as JSON, while execution history is stored in SQLite.
-- A dedicated web dashboard and automated anomaly detection rules have not yet been implemented.
+- Automated analysis currently supports four Volatility 3 plugins.
+- Analysis results are returned as JSON, while execution metadata and history are stored in SQLite.
+- Automated anomaly detection rules have not yet been implemented.
+- A dedicated web dashboard and forensic reporting system are not yet available.
+- The current Volatility runner uses a Windows-specific executable path.
 
 ## Project Status
 
 **Under active development.**
 
-The backend, investigation case management, memory image registration, and initial Volatility 3 integration have been implemented and tested.
+The following components have been implemented and tested:
+
+- FastAPI backend and SQLite database
+- Investigation case management
+- Memory image registration and validation
+- SHA-256 integrity hashing
+- Automated Volatility 3 analysis
+- Windows process enumeration and process tree analysis
+- Process command-line extraction
+- Analysis execution history and status tracking
+
+Future development will focus on advanced memory analysis, anomaly detection, forensic evidence management, and a web-based investigation dashboard.
 
 ## Disclaimer
 
 This project is intended for educational and digital forensic research purposes.
 
-Analysis results and detection indicators require verification by a forensic analyst.
+Memory analysis results and suspicious indicators require further verification by a forensic analyst.
