@@ -273,7 +273,9 @@ def analyze_image(
         "windows.info",
         "windows.pslist",
         "windows.pstree",
-        "windows.cmdline"
+        "windows.cmdline",
+        "windows.malfind",
+        "windows.netscan"
     ] = "windows.info"
 ):
 
