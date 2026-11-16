@@ -1,7 +1,7 @@
-
 import sqlite3
 import hashlib
 import subprocess
+import json
 from pathlib import Path
 from typing import Literal
 
@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from database import DB_PATH, init_db
 from volatility_runner import run_volatility
+from evidence_storage import save_evidence
 
 
 # ==========================================
@@ -265,7 +266,10 @@ def finish_analysis_run(run_id, status, error_message=None):
         conn.close()
 
 
-# API phan tich RAM bang Volatility 3
+# ==========================================
+# 8. VOLATILITY 3 ANALYSIS & EVIDENCE STORAGE
+# ==========================================
+
 @app.post("/images/{image_id}/analyze")
 def analyze_image(
     image_id: int,
@@ -279,7 +283,10 @@ def analyze_image(
     ] = "windows.info"
 ):
 
-    # Lay thong tin anh RAM tu SQLite
+    # ======================================
+    # LAY THONG TIN ANH RAM
+    # ======================================
+
     conn = sqlite3.connect(DB_PATH)
 
     try:
@@ -295,7 +302,6 @@ def analyze_image(
     finally:
         conn.close()
 
-    # Kiem tra Image ID
     if image is None:
         raise HTTPException(
             status_code=404,
@@ -311,7 +317,7 @@ def analyze_image(
             detail="Memory image is outside samples directory"
         )
 
-    # Kiem tra file
+    # Kiem tra file ton tai
     if not image_path.is_file():
         raise HTTPException(
             status_code=404,
@@ -361,7 +367,18 @@ def analyze_image(
             plugin
         )
 
+        # ==================================
+        # DAY 7 - LUU FORENSIC EVIDENCE
+        # ==================================
+
+        # Luu tung ban ghi JSON vao SQLite
+        evidence_count = save_evidence(
+            run_id,
+            result
+        )
+
     except subprocess.TimeoutExpired:
+
         finish_analysis_run(
             run_id,
             "failed",
@@ -374,7 +391,8 @@ def analyze_image(
         )
 
     except Exception as exc:
-        # Ghi lai loi neu plugin khong chay duoc
+
+        # Ghi lai loi neu phan tich hoac luu du lieu that bai
         finish_analysis_run(
             run_id,
             "failed",
@@ -383,7 +401,7 @@ def analyze_image(
 
         raise HTTPException(
             status_code=500,
-            detail="Volatility analysis failed"
+            detail="Volatility analysis or evidence storage failed"
         ) from exc
 
     # ======================================
@@ -395,10 +413,74 @@ def analyze_image(
         "completed"
     )
 
+    # ======================================
+    # TRA KET QUA CHO API
+    # ======================================
+
     return {
         "run_id": run_id,
         "image_id": image_id,
         "plugin": plugin,
         "status": "completed",
+        "evidence_count": evidence_count,
         "results": result
     }
+
+
+# ==========================================
+# 9. FORENSIC EVIDENCE RETRIEVAL
+# ==========================================
+
+@app.get("/analysis-runs/{run_id}/evidence")
+def get_analysis_evidence(run_id: int):
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+
+    try:
+        # Kiem tra lan phan tich co ton tai hay khong
+        run = conn.execute(
+            """
+            SELECT id, image_id, plugin_name, status
+            FROM analysis_runs
+            WHERE id = ?
+            """,
+            (run_id,)
+        ).fetchone()
+
+        if run is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Analysis run not found"
+            )
+
+        # Lay cac ban ghi da luu, khong chay lai Volatility
+        rows = conn.execute(
+            """
+            SELECT record_index, record_json
+            FROM evidence
+            WHERE run_id = ?
+            ORDER BY record_index ASC
+            """,
+            (run_id,)
+        ).fetchall()
+
+        evidence = [
+            {
+                "record_index": row["record_index"],
+                "data": json.loads(row["record_json"])
+            }
+            for row in rows
+        ]
+
+        return {
+            "run_id": run_id,
+            "image_id": run["image_id"],
+            "plugin": run["plugin_name"],
+            "status": run["status"],
+            "evidence_count": len(evidence),
+            "evidence": evidence
+        }
+
+    finally:
+        conn.close()
