@@ -2,6 +2,7 @@ import sqlite3
 import hashlib
 import subprocess
 import json
+from importlib.metadata import version
 from pathlib import Path
 from typing import Literal
 
@@ -9,8 +10,14 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from database import DB_PATH, init_db
-from volatility_runner import run_volatility
+from volatility_runner import run_volatility, ALLOWED_PLUGINS, VOL_PATH
 from evidence_storage import save_evidence
+from result_normalizer import (
+    normalize_pslist_record,
+    normalize_cmdline_record,
+    normalize_malfind_record,
+    normalize_netscan_record,
+)
 
 
 # ==========================================
@@ -49,7 +56,7 @@ class MemoryImageCreate(BaseModel):
 
 
 # ==========================================
-# 4. BASIC APIs - DAY 1
+# 4. BASIC APIs
 # ==========================================
 
 @app.get("/")
@@ -65,7 +72,7 @@ def health():
 
 
 # ==========================================
-# 5. CASE MANAGEMENT - DAY 2
+# 5. CASE MANAGEMENT
 # ==========================================
 
 # Tao phien dieu tra
@@ -114,7 +121,7 @@ def get_cases():
 
 
 # ==========================================
-# 6. MEMORY IMAGE MANAGEMENT - DAY 3
+# 6. MEMORY IMAGE MANAGEMENT
 # ==========================================
 
 # Dang ky anh RAM vao phien dieu tra
@@ -240,7 +247,7 @@ def get_memory_images(case_id: int):
 
 
 # ==========================================
-# 7. VOLATILITY 3 ANALYSIS - DAY 4 & DAY 5
+# 7. ANALYSIS STATUS MANAGEMENT
 # ==========================================
 
 # Cap nhat lich su phan tich
@@ -332,6 +339,25 @@ def analyze_image(
         )
 
     # ======================================
+    # THU THAP VOLATILITY METADATA
+    # ======================================
+
+    # Lay phien ban Volatility 3 dang cai dat
+    volatility_version = version("volatility3")
+
+    # Ghi nhan tham so theo cau hinh volatility_runner.py
+    plugin_params = {
+        "executable": str(VOL_PATH),
+        "arguments": [
+            "-q",
+            "-r", "json",
+            "-f", str(image_path),
+            ALLOWED_PLUGINS[plugin]
+        ],
+        "timeout_seconds": 300
+    }
+
+    # ======================================
     # TAO BAN GHI LICH SU PHAN TICH
     # ======================================
 
@@ -341,13 +367,24 @@ def analyze_image(
         cursor = conn.execute(
             """
             INSERT INTO analysis_runs
-            (image_id, plugin_name, status)
-            VALUES (?, ?, ?)
+            (
+                image_id,
+                plugin_name,
+                status,
+                volatility_version,
+                plugin_params_json
+            )
+            VALUES (?, ?, ?, ?, ?)
             """,
             (
                 image_id,
                 plugin,
-                "running"
+                "running",
+                volatility_version,
+                json.dumps(
+                    plugin_params,
+                    ensure_ascii=False
+                )
             )
         )
 
@@ -366,10 +403,6 @@ def analyze_image(
             image_path,
             plugin
         )
-
-        # ==================================
-        # DAY 7 - LUU FORENSIC EVIDENCE
-        # ==================================
 
         # Luu tung ban ghi JSON vao SQLite
         evidence_count = save_evidence(
@@ -422,6 +455,8 @@ def analyze_image(
         "image_id": image_id,
         "plugin": plugin,
         "status": "completed",
+        "volatility_version": volatility_version,
+        "plugin_params": plugin_params,
         "evidence_count": evidence_count,
         "results": result
     }
@@ -441,7 +476,13 @@ def get_analysis_evidence(run_id: int):
         # Kiem tra lan phan tich co ton tai hay khong
         run = conn.execute(
             """
-            SELECT id, image_id, plugin_name, status
+            SELECT
+                id,
+                image_id,
+                plugin_name,
+                status,
+                volatility_version,
+                plugin_params_json
             FROM analysis_runs
             WHERE id = ?
             """,
@@ -473,11 +514,41 @@ def get_analysis_evidence(run_id: int):
             for row in rows
         ]
 
+        # Bo sung du lieu chuan hoa theo plugin
+        if run["plugin_name"] == "windows.pslist":
+            for item in evidence:
+                item["normalized"] = normalize_pslist_record(
+                    item["data"]
+                )
+
+        elif run["plugin_name"] == "windows.cmdline":
+            for item in evidence:
+                item["normalized"] = normalize_cmdline_record(
+                    item["data"]
+                )
+
+        elif run["plugin_name"] == "windows.malfind":
+            for item in evidence:
+                item["normalized"] = normalize_malfind_record(
+                    item["data"]
+                )
+
+        elif run["plugin_name"] == "windows.netscan":
+            for item in evidence:
+                item["normalized"] = normalize_netscan_record(
+                    item["data"]
+                )
+
         return {
             "run_id": run_id,
             "image_id": run["image_id"],
             "plugin": run["plugin_name"],
             "status": run["status"],
+            "volatility_version": run["volatility_version"],
+            "plugin_params": (
+                json.loads(run["plugin_params_json"])
+                if run["plugin_params_json"] else None
+            ),
             "evidence_count": len(evidence),
             "evidence": evidence
         }
